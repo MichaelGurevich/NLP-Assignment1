@@ -4,6 +4,9 @@ import random
 import numpy as np
 import string
 from collections import defaultdict
+from typing import DefaultDict
+
+import cloze_utils
 
 from distributed.utils_comm import retry
 
@@ -162,23 +165,14 @@ def predict(word2freq: defaultdict, vocab_size ,candidates: list, context: list,
     return best_candidate
 
 
+def count_ngrams( word2freq: defaultdict, ngram: list, unigram_count: int):
+    word2freq[" ".join(ngram)] += 1
+    for w in ngram:
+        word2freq[w] += 1
 
+def train(corpus_filename: str, candidates: set) -> dict:
 
-def train(corpus_filename: str, candidates_filename: str) -> dict:
     word2freq = defaultdict(int)
-
-    try:
-        with open(candidates_filename, 'r', encoding='utf-8') as f:
-            candidate_list = [line.strip() for line in f]
-            candidates = set(candidate_list)
-
-            # todo: add at the start of the each line <s>
-            # todo: add at the end of the each line <\s>
-    except FileNotFoundError:
-        print(f"Error: Candidates file not found at {candidates_filename}")
-        return word2freq
-
-    print(f"Loaded {len(candidates)} candidates.")
 
     unigram_count = 0
     bigram_count = 0
@@ -188,86 +182,40 @@ def train(corpus_filename: str, candidates_filename: str) -> dict:
         with open(corpus_filename, 'r', encoding='utf-8') as fin:
             for line in fin:
                 cleaned_line = clean_line(line).split()
-                line_len = len(cleaned_line)
 
-                for i, word in enumerate(cleaned_line):
+                # Add padding
+                padded_line = ["<s>", "<s>"] + cleaned_line + ["</s>", "</s>"]
+                line_len = len(padded_line)
+
+                for i, word in enumerate(padded_line):
                     if word not in candidates:
                         continue
-                # todo: change edge cases of candidate appearing at the start/2nd/3rd/last/second to last place due to adding <s>
+
                     # Left bigram
-                    if i > 0:
-                        ngram = cleaned_line[i - 1:i + 1]
-                        word2freq[" ".join(ngram)] += 1
-                        bigram_count += 1
-                        for w in ngram:
-                            word2freq[w] += 1
-                            unigram_count += 1
+                    count_ngrams(word2freq, padded_line[i - 1:i + 1], unigram_count)
 
                     # Right bigram
-                    if i < line_len - 1:
-                        ngram = cleaned_line[i:i + 2]
-                        word2freq[" ".join(ngram)] += 1
-                        bigram_count += 1
-                        for w in ngram:
-                            word2freq[w] += 1
-                            unigram_count += 1
+                    count_ngrams(word2freq, padded_line[i:i + 2], unigram_count)
 
                     # Left trigram
-                    if i > 1:
-                        ngram = cleaned_line[i - 2:i + 1]
-                        word2freq[" ".join(ngram)] += 1
-                        trigram_count += 1
-                        for w in ngram:
-                            word2freq[w] += 1
-                            unigram_count += 1
+                    count_ngrams(word2freq, padded_line[i - 2:i + 1], unigram_count)
 
                     # Middle trigram
-                    if i > 0 and i < line_len - 1:
-                        ngram = cleaned_line[i - 1:i + 2]
-                        word2freq[" ".join(ngram)] += 1
-                        trigram_count += 1
-                        for w in ngram:
-                            word2freq[w] += 1
-                            unigram_count += 1
+                    count_ngrams(word2freq, padded_line[i - 1:i + 2], unigram_count)
 
                     # Right trigram
-                    if i < line_len - 2:
-                        ngram = cleaned_line[i:i + 3]
-                        word2freq[" ".join(ngram)] += 1
-                        trigram_count += 1
-                        for w in ngram:
-                            word2freq[w] += 1
-                            unigram_count += 1
+                    count_ngrams(word2freq, padded_line[i:i + 3], unigram_count)
+
+                    unigram_count += 10
+                    bigram_count += 2
+                    trigram_count += 3
 
     except FileNotFoundError:
         print(f"Error: Corpus file not found at {corpus_filename}")
         return word2freq
 
     print(unigram_count, bigram_count, trigram_count)
-    # Calling predict with a dummy context, as in the original implementation.
 
-    contexts = [
-        ["included", "positional", "were", "not"],
-        ["the", "vigesimal", "that", "defined"],
-        ["the", "isolated", "area", "of"],
-        ["a", "more", "area", "due"],
-        ["to", "human", "enabling", "more"],
-        ["convenient", "and", "transport", "predominantly"],
-        ["the", "more", "used", "fonts"],
-        ["processors", "web", "and", "other"],
-        ["unrecognizable", "when", "in", "a"],
-        ["40", "million", "make", "their"],
-        ["at", "least", "of", "which"],
-        ["better", "diagnostic", "for", "tuberculosis"],
-    ]
-    i = 1
-    vocab_size = len({k for k in word2freq.keys() if len(k.split()) == 1})
-    predictions = []
-    for context in contexts:
-        prediction = predict(word2freq, vocab_size, candidate_list, context, 0.02)
-        predictions.append(prediction)
-
-    print(predictions)
     """
     for k in np.arange(0.000001, 0.04, 0.000001):
         predictions = []
@@ -292,14 +240,41 @@ def train(corpus_filename: str, candidates_filename: str) -> dict:
 
 
 
-def solve_cloze(input, candidates, corpus, left_only):
-    # todo: implement this function
+def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only):
 
-    print(f'starting to solve the cloze {input} with {candidates} using {corpus}')
+    predictions = []
 
-    train(corpus, candidates)
+    try:
+        with open(input_filename, "r", encoding="utf-8") as cloze_file:
+            text = cloze_file.read()
 
-    return list()
+    except FileNotFoundError:
+        print(f"Error: Could not open file '{cloze_file}' (file not found)")
+        return predictions
+
+    try:
+        with open(candidates_filename, 'r', encoding='utf-8') as f:
+            candidate_list = [line.strip() for line in f]
+            candidates = set(candidate_list)
+            print(f"Loaded {len(candidates)} candidates.")
+
+    except FileNotFoundError:
+        print(f"Error: Candidates file not found at {candidates_filename}")
+        return predictions
+
+    print(f'starting to solve the cloze {input_filename} with {candidates} using {corpus_filename}')
+
+    contexts = cloze_utils.get_all_contexts(text, n=2)
+
+    word2freq = train(corpus_filename,candidates)
+
+    vocab_size = len({k for k in word2freq.keys() if len(k.split()) == 1})
+    for context in contexts:
+        prediction = predict(word2freq, vocab_size, candidate_list, context, 0.02)
+        predictions.append(prediction)
+
+
+    return predictions
 
 
 if __name__ == '__main__':
@@ -310,7 +285,7 @@ if __name__ == '__main__':
 
     solution = solve_cloze(config['input_filename'],
                            config['candidates_filename'],
-                           config['corpus'],
+                           config['corpus_filename'],
                            config['left_only'])
 
     elapsed_time = time.time() - start_time

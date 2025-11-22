@@ -1,7 +1,7 @@
 
 import re
 
-#function that find the indices of the blanks in a string
+#function that finds the indices of the blanks in a string
 # returns a list of tuples (starting index, end index).
 def find_blanks(text):
     blanks = []
@@ -27,7 +27,7 @@ def find_blanks(text):
 # function that receives a tuple of blank indices in string,
 # n - number of words to retrieve on either side of blank,
 # left - flag for whether to return the words only to the left of blank or from both sides
-# returns a list of strings [previous, next] or [previous] (if left = true) of the n words beside blank.
+# returns a list of words [before1, before2, after1, after2] or [before1, before2] (if left = true) of the n words beside blank.
 
 def get_context(text, blank_indices, n=1, left = False):
 
@@ -38,23 +38,23 @@ def get_context(text, blank_indices, n=1, left = False):
     after = text [end+1:]
 
     #splitting each part to a list of words
-    #NOTICE: i allowed hyphens and apostrophes in words so well-known and tim's would be one word,
-    #but we can change that depending on how will build the module
-    before_words = re.findall(r"[\w'-]+", before)
-    after_words = re.findall(r"[\w'-]+", after)
+    before_words = re.findall(r"\w+", before)
+    after_words = re.findall(r"\w+", after)
 
 
     #checking if there are enough words on each side of a blank,
     #but assigns what's there anyway
-
     prev_n = before_words[-n:] if len(before_words) >= n else before_words
     next_n = after_words[:n] if len(after_words) >= n else after_words
 
 
-
-    #concatenating the lists to strings
     #NOTICE: this will return a list of strings even if there's less than we are expecting
     if left:
-        return [" ".join(prev_n)]
+        return prev_n
     else:
-        return [" ".join(prev_n), " ".join(next_n)]
+        return prev_n + next_n
+
+
+def get_all_contexts(text, n=2, left=False):
+    blanks = find_blanks(text)
+    return [get_context(text, b, n=n, left=left) for b in blanks]
