@@ -33,7 +33,7 @@ def get_solution_accuracy(label: list, solution: list) -> float:
         return 0.0
 
     predicted_correct = np.sum(label_array == solution_array)
-    
+
     return predicted_correct / list_len
 
 
@@ -57,11 +57,11 @@ def get_random_solution_baseline(num_of_solutions: int, cloze_word_list: list) -
     for _ in range(num_of_solutions):
         # Generate a single random solution as a numpy array
         random_solution_array = np.random.permutation(cloze_word_array)
-        
+
         # Calculate accuracy for this random solution
         accuracy = get_solution_accuracy(label_array, random_solution_array)
         accuracy_list.append(accuracy)
-    
+
     return np.mean(accuracy_list)
 
 
@@ -78,12 +78,12 @@ def clean_line(text_line: str) -> str:
     text_line = text_line.lower()
 
     translator = str.maketrans('', '', string.punctuation)
-    cleaned_line= text_line.translate(translator)
+    cleaned_line = text_line.translate(translator)
 
     return cleaned_line
 
 
-def predict(word2freq: defaultdict, vocab_size ,candidates: list, context: list, k: float) -> str:
+def predict(word2freq: defaultdict, vocab_size, candidates: list, context: list, k: float) -> str:
     """
     Predicts the missing word in a cloze task using an n-gram model with Add-1 smoothing.
 
@@ -129,7 +129,8 @@ def predict(word2freq: defaultdict, vocab_size ,candidates: list, context: list,
         # P(candidate | w_b2, w_b1) with Add-1 Smoothing
         left_trigram_hist = f"{w_b2} {w_b1}"
         left_trigram = f"{w_b2} {w_b1} {candidate}"
-        left_trigram_prob = (word2freq.get(left_trigram, 0) + k) / (word2freq.get(left_trigram_hist, 0) + k * vocab_size)
+        left_trigram_prob = (word2freq.get(left_trigram, 0) + k) / (
+                    word2freq.get(left_trigram_hist, 0) + k * vocab_size)
 
         """
         # P(w_a1 | candidate) with Add-1 Smoothing
@@ -141,19 +142,16 @@ def predict(word2freq: defaultdict, vocab_size ,candidates: list, context: list,
         # P(w_a2 | candidate, w_a1) with Add-1 Smoothing
         right_trigram_hist = f"{candidate} {w_a1}"
         right_trigram = f"{candidate} {w_a1} {w_a2}"
-        right_trigram_prob = (word2freq.get(right_trigram, 0) + k) / (word2freq.get(right_trigram_hist, 0) + k * vocab_size)
-
+        right_trigram_prob = (word2freq.get(right_trigram, 0) + k) / (
+                    word2freq.get(right_trigram_hist, 0) + k * vocab_size)
 
         # P(w_a1 | w_b1, candidate) with Add-1 Smoothing
         mid_trigram_hist = f"{w_b1} {candidate}"
         mid_trigram = f"{w_b1} {candidate} {w_a1}"
         mid_trigram_prob = (word2freq.get(mid_trigram, 0) + k) / (word2freq.get(mid_trigram_hist, 0) + k * vocab_size)
 
-
-
         # The original code took the max of the probabilities. We preserve this approach.
-        #prob_arr = np.array([left_bigram_prob, left_trigram_prob, right_bigram_prob, right_trigram_prob, mid_trigram_prob])
-
+        # prob_arr = np.array([left_bigram_prob, left_trigram_prob, right_bigram_prob, right_trigram_prob, mid_trigram_prob])
 
         prob_arr = np.array([left_trigram_prob, right_trigram_prob, mid_trigram_prob])
         curr_max_prob = np.max(prob_arr)
@@ -165,18 +163,12 @@ def predict(word2freq: defaultdict, vocab_size ,candidates: list, context: list,
     return best_candidate
 
 
-def count_ngrams( word2freq: defaultdict, ngram: list, unigram_count: int):
-    word2freq[" ".join(ngram)] += 1
-    for w in ngram:
-        word2freq[w] += 1
-
 def train(corpus_filename: str, candidates: set) -> dict:
 
-    word2freq = defaultdict(int)
+    sentence_start_symbol = "<s>"
+    sentence_end_symbol = "</s>"
 
-    unigram_count = 0
-    bigram_count = 0
-    trigram_count = 0
+    word2freq = defaultdict(int)
 
     try:
         with open(corpus_filename, 'r', encoding='utf-8') as fin:
@@ -184,64 +176,110 @@ def train(corpus_filename: str, candidates: set) -> dict:
                 cleaned_line = clean_line(line).split()
 
                 # Add padding
-                padded_line = ["<s>", "<s>"] + cleaned_line + ["</s>", "</s>"]
+                padded_line = [sentence_start_symbol] + cleaned_line + [sentence_end_symbol]
                 line_len = len(padded_line)
 
-                for i, word in enumerate(padded_line):
+                # (start= second element (after <s>), stop= one word before end (before </s>), step=1)
+                for i in range(1, len(padded_line) - 1, 1):
+                    word = padded_line[i]
                     if word not in candidates:
                         continue
 
-                    # Left bigram
-                    count_ngrams(word2freq, padded_line[i - 1:i + 1], unigram_count)
+                    # on a candidate word:
 
-                    # Right bigram
-                    count_ngrams(word2freq, padded_line[i:i + 2], unigram_count)
+                    prev_word = padded_line[i - 1]
+                    next_word = padded_line[i + 1]
 
-                    # Left trigram
-                    count_ngrams(word2freq, padded_line[i - 2:i + 1], unigram_count)
+                    if prev_word == sentence_start_symbol:
 
-                    # Middle trigram
-                    count_ngrams(word2freq, padded_line[i - 1:i + 2], unigram_count)
+                        # left bigram
+                        lbi = " ".join([prev_word, word])
+                        word2freq[lbi] += 1
+                        for w in lbi.split():
+                            word2freq[w] += 1
 
-                    # Right trigram
-                    count_ngrams(word2freq, padded_line[i:i + 3], unigram_count)
+                        #right bigram
+                        rbi = " ".join([word, next_word])
+                        word2freq[rbi] += 1
+                        for w in rbi.split():
+                            word2freq[w] += 1
 
-                    unigram_count += 10
-                    bigram_count += 2
-                    trigram_count += 3
+                        #right trigram
+                        if i+2 < line_len:
+                            rti = " ".join([word, next_word, padded_line[i+2]])
+                            word2freq[rti] += 1
+                            for w in rti.split():
+                                word2freq[w] += 1
+
+                        continue
+
+
+                    elif next_word == sentence_end_symbol:
+
+                       #  left bigram
+                        lbi = " ".join([prev_word, word])
+                        word2freq[lbi] += 1
+                        for w in lbi.split():
+                            word2freq[w] += 1
+
+                        # right bigram
+                        rbi = " ".join([word, next_word])
+                        word2freq[rbi] += 1
+                        for w in rbi.split():
+                           word2freq[w] += 1
+
+                        #left trigram
+                        if i-2 >= 0:
+                            ltri = " ".join([padded_line[i-2], prev_word, word])
+                            word2freq[ltri] += 1
+                            for w in ltri.split():
+                                word2freq[w] += 1
+
+                        continue
+
+
+                    else:
+                        # left bigram
+                        lbi = " ".join([prev_word, word])
+                        word2freq[lbi] += 1
+                        for w in lbi.split():
+                            word2freq[w] += 1
+
+                        # right bigram
+                        rbi = " ".join([word, next_word])
+                        word2freq[rbi] += 1
+                        for w in rbi.split():
+                            word2freq[w] += 1
+
+                        # left trigram
+                        if i - 2 >= 0:
+                            ltri = " ".join([padded_line[i - 2], prev_word, word])
+                            word2freq[ltri] += 1
+                            for w in ltri.split():
+                                word2freq[w] += 1
+
+                        # right trigram
+                        if i + 2 < line_len:
+                            rti = " ".join([word, next_word, padded_line[i + 2]])
+                            word2freq[rti] += 1
+                            for w in rti.split():
+                                word2freq[w] += 1
+
+                        # middle trigram
+                        mtri = " ".join([prev_word, word, next_word])
+                        word2freq[mtri] += 1
+                        for w in mtri.split():
+                            word2freq[w] += 1
+                        continue
 
     except FileNotFoundError:
         print(f"Error: Corpus file not found at {corpus_filename}")
         return word2freq
 
-    print(unigram_count, bigram_count, trigram_count)
-
-    """
-    for k in np.arange(0.000001, 0.04, 0.000001):
-        predictions = []
-        for context in contexts:
-            prediction = predict(word2freq,vocab_size ,candidate_list, context, k)
-            predictions.append(prediction)
-
-        true = 0
-        for label, prediction in zip(candidate_list, predictions):
-            if label == prediction:
-                true += 1
-
-        i += 1
-
-        acc = true / len(candidate_list)
-        if acc == 1.0:
-            print(f"i: {i} | k: {k} | accuracy {acc}% +++++++++++++++++++++++++++++++++")
-        else:
-            print(f"i: {i} | k: {k} | accuracy {acc}% ")
-    """
     return word2freq
 
 
-
 def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only):
-
     predictions = []
 
     try:
@@ -264,15 +302,14 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
 
     print(f'starting to solve the cloze {input_filename} with {candidates} using {corpus_filename}')
 
-    contexts = cloze_utils.get_all_contexts(text, n=2)
+    contexts = cloze_utils.get_all_contexts(text, n=2, left = left_only)
 
-    word2freq = train(corpus_filename,candidates)
+    word2freq = train(corpus_filename, candidates)
 
     vocab_size = len({k for k in word2freq.keys() if len(k.split()) == 1})
     for context in contexts:
         prediction = predict(word2freq, vocab_size, candidate_list, context, 0.02)
         predictions.append(prediction)
-
 
     return predictions
 
