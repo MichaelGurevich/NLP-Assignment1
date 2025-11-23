@@ -3,10 +3,13 @@ import time
 import numpy as np
 import string
 from collections import defaultdict
+
+from sympy.codegen.ast import continue_
+
 from cloze_utils import *
 
 
-def predict(word2freq: defaultdict, vocab_size ,candidates: list, context: list, k: float, total_tokens) -> str:
+def predict(word2freq: defaultdict, vocab_size ,candidates: list, context: dict, k: float, total_tokens, left_only=False) -> str:
     """
     Predicts the missing word in a cloze task using an n-gram model with Add-1 smoothing.
 
@@ -23,18 +26,27 @@ def predict(word2freq: defaultdict, vocab_size ,candidates: list, context: list,
     """
     # V: Vocabulary size for Add-1 smoothing
 
-    if vocab_size == 0:
-        # Avoid division by zero if vocab is empty
-        return candidates[0] if candidates else ""
-
     max_prob = -np.inf
-    best_candidate = candidates[0] if candidates else ""
 
-    """
-    if len(context) != 4:
-        print("Warning: Context must be a list of 4 words. Using a dummy context.")
-        context = ["", "", "", ""]
-    """
+    left_context_size = len(context["left_context"])
+    right_context_size = len(context["right_context"])
+
+    if left_only:
+        if left_context_size == 2:
+            # todo: calc left tri gram chain
+            pass
+        else:
+            # TODO: calc left bi gram chain
+            pass
+    elif right_context_size == 2 and left_context_size == 2:
+        # TODO: calc left & right & mid tri grams
+        pass
+    elif left_context_size == 1:
+        # TODO: calc left bi gram chain, right & mid tri gram chain
+        pass
+    else:
+        # TODO: calc left & mid tri gram chain, right bi gram chain
+        pass
 
     w_b2, w_b1, w_a1, w_a2 = context
 
