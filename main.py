@@ -172,6 +172,10 @@ def count_ngrams( word2freq: defaultdict, ngram: list, unigram_count: int):
 
 def train(corpus_filename: str, candidates: set) -> dict:
 
+
+    SENTENCE_START_SYMBOL = "<s>"
+    SENTENCE_END_SYMBOL = "</s>"
+
     word2freq = defaultdict(int)
 
     unigram_count = 0
@@ -184,12 +188,32 @@ def train(corpus_filename: str, candidates: set) -> dict:
                 cleaned_line = clean_line(line).split()
 
                 # Add padding
+                # TODO: change padding symbols to constants
+                # TODO: change to only one symbol padding
                 padded_line = ["<s>", "<s>"] + cleaned_line + ["</s>", "</s>"]
                 line_len = len(padded_line)
 
-                for i, word in enumerate(padded_line):
+                # (start= second element (after <s>), stop= one word before end (before </s>), step=1)
+                for i in range(1, len(padded_line)-1, 1):
+                    word = padded_line[i]
                     if word not in candidates:
                         continue
+
+                    # on a candidate word:
+
+                    prev_word = padded_line[i-1]
+                    next_word = padded_line[i+1]
+
+                    if prev_word == SENTENCE_START_SYMBOL:
+                        #TODO: implement logic
+                        continue
+                    elif next_word == SENTENCE_END_SYMBOL:
+                        # TODO: implement logic
+                        continue
+                    else:
+                        # TODO: implement logic
+                        continue
+
 
                     # Left bigram
                     count_ngrams(word2freq, padded_line[i - 1:i + 1], unigram_count)
@@ -214,28 +238,6 @@ def train(corpus_filename: str, candidates: set) -> dict:
         print(f"Error: Corpus file not found at {corpus_filename}")
         return word2freq
 
-    print(unigram_count, bigram_count, trigram_count)
-
-    """
-    for k in np.arange(0.000001, 0.04, 0.000001):
-        predictions = []
-        for context in contexts:
-            prediction = predict(word2freq,vocab_size ,candidate_list, context, k)
-            predictions.append(prediction)
-
-        true = 0
-        for label, prediction in zip(candidate_list, predictions):
-            if label == prediction:
-                true += 1
-
-        i += 1
-
-        acc = true / len(candidate_list)
-        if acc == 1.0:
-            print(f"i: {i} | k: {k} | accuracy {acc}% +++++++++++++++++++++++++++++++++")
-        else:
-            print(f"i: {i} | k: {k} | accuracy {acc}% ")
-    """
     return word2freq
 
 
