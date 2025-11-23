@@ -9,6 +9,29 @@ from sympy.codegen.ast import continue_
 from cloze_utils import *
 
 
+def calc_unigram_prob(word2freq, w1, tokens_count, vocab_size, k):
+    numerator = word2freq[w1] + k
+    denominator = tokens_count + k * vocab_size
+
+    return np.log(numerator) - np.log(denominator)
+
+def calc_bi_gram_prob(word2freq, w1, w2, vocab_size, k):
+    bi_gram = " ".join([w1, w2])
+
+    numerator = word2freq[bi_gram] + k
+    denominator = word2freq[w1] + k * vocab_size
+
+    return np.log(numerator) - np.log(denominator)
+
+def calc_tri_gram_prob(word2freq, w1, w2, w3, vocab_size, k):
+    tri_gram = " ".join([w1, w2, w3])
+    bi_gram = " ".join([w1, w2])
+
+    numerator = word2freq[tri_gram] + k
+    denominator = word2freq[bi_gram] + k * vocab_size
+
+    return np.log(numerator) - np.log(denominator)
+
 def predict(word2freq: defaultdict, vocab_size ,candidates: list, context: dict, k: float, total_tokens, left_only=False) -> str:
     """
     Predicts the missing word in a cloze task using an n-gram model with Add-1 smoothing.
