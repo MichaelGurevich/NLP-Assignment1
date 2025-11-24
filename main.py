@@ -165,55 +165,47 @@ def predict(word2freq: defaultdict, vocab_size, candidates: list, context: list,
     return best_candidate
 
 
-def add_ngram_counts(word2freq: defaultdict, tokens: list) -> None:
-    """Helper to update counts for an n-gram and its unigrams."""
-    key = " ".join(tokens)
-    word2freq[key] += 1
-    for w in tokens:
-        word2freq[w] += 1
-
-
-def train(corpus_filename: str, candidates: set) -> dict:
-
+def train(corpus_filename: str, candidates: set):
     word2freq = defaultdict(int)
 
-    try:
-        with open(corpus_filename, 'r', encoding='utf-8') as fin:
-            for line in fin:
-                cleaned_line = clean_line(line).split()
+    with open(corpus_filename, 'r', encoding='utf-8') as fin:
+        for line in fin:
+            cleaned_line = clean_line(line).split()
+            padded_line = [cloze_utils.SENTENCE_START_SYMBOL] + cleaned_line + [cloze_utils.SENTENCE_END_SYMBOL]
+            line_len = len(padded_line)
 
-                # Add padding
-                padded_line = [cloze_utils.SENTENCE_START_SYMBOL] + cleaned_line + [cloze_utils.SENTENCE_END_SYMBOL]
-                line_len = len(padded_line)
+            for i in range(1, line_len - 1):
+                word = padded_line[i]
+                if word not in candidates:
+                    continue
 
-                # iterate tokens excluding the padding ends
-                for i in range(1, line_len - 1):
-                    word = padded_line[i]
-                    if word not in candidates:
-                        continue
+                prev_word = padded_line[i - 1]
+                next_word = padded_line[i + 1]
 
-                    prev_word = padded_line[i - 1]
-                    next_word = padded_line[i + 1]
+                # Count unigrams in the window
+                word2freq[prev_word] += 1
+                word2freq[word] += 1
+                word2freq[next_word] += 1
 
-                    # Always add left/right bigrams around the candidate
-                    add_ngram_counts(word2freq, [prev_word, word])
-                    add_ngram_counts(word2freq, [word, next_word])
+                # Count bigrams
+                word2freq[f"{prev_word} {word}"] += 1
+                word2freq[f"{word} {next_word}"] += 1
 
-                    # Left trigram if available
-                    if i - 2 >= 0:
-                        add_ngram_counts(word2freq, [padded_line[i - 2], prev_word, word])
+                # Left trigram if available
+                if i - 2 >= 0:
+                    prev_prev_word = padded_line[i - 2]
+                    word2freq[prev_prev_word] += 1
+                    word2freq[f"{prev_prev_word} {prev_word} {word}"] += 1
 
-                    # Right trigram if available
-                    if i + 2 < line_len:
-                        add_ngram_counts(word2freq, [word, next_word, padded_line[i + 2]])
+                # Right trigram if available
+                if i + 2 < line_len:
+                    next_next_word = padded_line[i + 2]
+                    word2freq[next_next_word] += 1
+                    word2freq[f"{word} {next_word} {next_next_word}"] += 1
 
-                    # Middle trigram only when not at boundaries 
-                    if prev_word != cloze_utils.SENTENCE_START_SYMBOL and next_word != cloze_utils.SENTENCE_END_SYMBOL:
-                        add_ngram_counts(word2freq, [prev_word, word, next_word])
-
-    except FileNotFoundError:
-        print(f"Error: Corpus file not found at {corpus_filename}")
-        return word2freq
+                # Middle trigram
+                if prev_word != cloze_utils.SENTENCE_START_SYMBOL and next_word != cloze_utils.SENTENCE_END_SYMBOL:
+                    word2freq[f"{prev_word} {word} {next_word}"] += 1
 
     return word2freq
 
