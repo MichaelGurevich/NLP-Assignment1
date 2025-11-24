@@ -1,7 +1,11 @@
-
+import string
 import re
 
-#function that find the indices of the blanks in a string
+SENTENCE_START_SYMBOL = "<s>"
+SENTENCE_END_SYMBOL = "</s>"
+CLOZE_BLANK_SYMBOL = "__________"
+
+#function that finds the indices of the blanks in a string
 # returns a list of tuples (starting index, end index).
 def find_blanks(text):
     blanks = []
@@ -27,7 +31,7 @@ def find_blanks(text):
 # function that receives a tuple of blank indices in string,
 # n - number of words to retrieve on either side of blank,
 # left - flag for whether to return the words only to the left of blank or from both sides
-# returns a list of strings [previous, next] or [previous] (if left = true) of the n words beside blank.
+# returns a list of words [before1, before2, after1, after2] or [before1, before2] (if left = true) of the n words beside blank.
 
 def get_context(text, blank_indices, n=1, left = False):
 
@@ -38,23 +42,85 @@ def get_context(text, blank_indices, n=1, left = False):
     after = text [end+1:]
 
     #splitting each part to a list of words
-    #NOTICE: i allowed hyphens and apostrophes in words so well-known and tim's would be one word,
-    #but we can change that depending on how will build the module
-    before_words = re.findall(r"[\w'-]+", before)
-    after_words = re.findall(r"[\w'-]+", after)
+    before_words = re.findall(r"\w+", before)
+    after_words = re.findall(r"\w+", after)
 
 
     #checking if there are enough words on each side of a blank,
     #but assigns what's there anyway
-
     prev_n = before_words[-n:] if len(before_words) >= n else before_words
     next_n = after_words[:n] if len(after_words) >= n else after_words
 
 
-
-    #concatenating the lists to strings
     #NOTICE: this will return a list of strings even if there's less than we are expecting
     if left:
-        return [" ".join(prev_n)]
+        return prev_n
     else:
-        return [" ".join(prev_n), " ".join(next_n)]
+        return prev_n + next_n
+
+
+def get_all_contexts(text, n=2, left=False):
+    blanks = find_blanks(text)
+    return [get_context(text, b, n=n, left=left) for b in blanks]
+
+
+
+def get_contexts(cloze_filename:str) -> list:
+    """
+     Extract left and right context words (up to 2 on each side) surrounding cloze blanks.
+
+     Args:
+         cloze_filename: Path to file with sentences containing cloze blanks
+
+     Returns:
+         List of dicts with "left_context" and "right_context" for each blank
+
+     Note: Assumes cloze blanks are not the only word in a sentence.
+     """
+
+    punctuation_without_underscore = string.punctuation.replace('_', '')
+    translator = str.maketrans('', '', punctuation_without_underscore)
+
+    contexts_list = []
+
+
+    with open(cloze_filename, 'r', encoding='utf-8') as fin:
+        for line in fin:
+
+            cleaned_line = line.translate(translator).split()
+
+            # add start and end sentence symbols
+            cleaned_line.insert(0, SENTENCE_START_SYMBOL)
+            cleaned_line.append(SENTENCE_END_SYMBOL)
+
+            for i in range (1, len(cleaned_line)-1, 1):
+                if cleaned_line[i] != CLOZE_BLANK_SYMBOL:
+                    continue
+
+                context = {
+                    "left_context": [],
+                    "right_context": []
+                }
+
+                prev_word = cleaned_line[i-1]
+                next_word = cleaned_line[i+1]
+
+                if prev_word == SENTENCE_START_SYMBOL: # candidate is the 1st word in the sentence
+                    context["left_context"].append(SENTENCE_START_SYMBOL)
+                    context["right_context"].append(next_word)
+                    context["right_context"].append(cleaned_line[i+2])
+                elif next_word == SENTENCE_END_SYMBOL:
+                    context["right_context"].append(SENTENCE_END_SYMBOL)
+                    context["left_context"].append(cleaned_line[i - 2])
+                    context["left_context"].append(prev_word)
+                else:
+                    context["right_context"].append(next_word)
+                    context["right_context"].append(cleaned_line[i+2])
+
+                    context["left_context"].append(cleaned_line[i - 2])
+                    context["left_context"].append(prev_word)
+
+
+                contexts_list.append(context)
+
+    return contexts_list
