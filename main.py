@@ -166,6 +166,16 @@ def predict(word2freq: defaultdict, vocab_size, candidates: list, context: list,
 
 
 def train(corpus_filename: str, candidates: set):
+    """
+        Extract n-gram counts from context windows around candidate words.
+
+        Args:
+            corpus_filename: Path to the corpus text file
+            candidates: Set of candidate words to build contexts around
+
+        Returns:
+            defaultdict mapping n-grams (space-separated strings) to their frequencies
+        """
     word2freq = defaultdict(int)
 
     with open(corpus_filename, 'r', encoding='utf-8') as fin:
