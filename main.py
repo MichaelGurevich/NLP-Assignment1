@@ -163,6 +163,14 @@ def predict(word2freq: defaultdict, vocab_size, candidates: list, context: list,
     return best_candidate
 
 
+def add_ngram_counts(word2freq: defaultdict, tokens: list) -> None:
+    """Helper to update counts for an n-gram and its unigrams."""
+    key = " ".join(tokens)
+    word2freq[key] += 1
+    for w in tokens:
+        word2freq[w] += 1
+
+
 def train(corpus_filename: str, candidates: set) -> dict:
 
     sentence_start_symbol = "<s>"
@@ -179,104 +187,40 @@ def train(corpus_filename: str, candidates: set) -> dict:
                 padded_line = [sentence_start_symbol] + cleaned_line + [sentence_end_symbol]
                 line_len = len(padded_line)
 
-                # (start= second element (after <s>), stop= one word before end (before </s>), step=1)
-                for i in range(1, len(padded_line) - 1, 1):
+                # iterate tokens excluding the padding ends
+                for i in range(1, line_len - 1):
                     word = padded_line[i]
                     if word not in candidates:
                         continue
 
-                    # on a candidate word:
-
                     prev_word = padded_line[i - 1]
                     next_word = padded_line[i + 1]
 
-                    if prev_word == sentence_start_symbol:
+                    # Always add left/right bigrams around the candidate
+                    add_ngram_counts(word2freq, [prev_word, word])
+                    add_ngram_counts(word2freq, [word, next_word])
 
-                        # left bigram
-                        lbi = " ".join([prev_word, word])
-                        word2freq[lbi] += 1
-                        for w in lbi.split():
-                            word2freq[w] += 1
+                    # Left trigram if available
+                    if i - 2 >= 0:
+                        add_ngram_counts(word2freq, [padded_line[i - 2], prev_word, word])
 
-                        #right bigram
-                        rbi = " ".join([word, next_word])
-                        word2freq[rbi] += 1
-                        for w in rbi.split():
-                            word2freq[w] += 1
+                    # Right trigram if available
+                    if i + 2 < line_len:
+                        add_ngram_counts(word2freq, [word, next_word, padded_line[i + 2]])
 
-                        #right trigram
-                        if i+2 < line_len:
-                            rti = " ".join([word, next_word, padded_line[i+2]])
-                            word2freq[rti] += 1
-                            for w in rti.split():
-                                word2freq[w] += 1
-
-                        continue
-
-
-                    elif next_word == sentence_end_symbol:
-
-                       #  left bigram
-                        lbi = " ".join([prev_word, word])
-                        word2freq[lbi] += 1
-                        for w in lbi.split():
-                            word2freq[w] += 1
-
-                        # right bigram
-                        rbi = " ".join([word, next_word])
-                        word2freq[rbi] += 1
-                        for w in rbi.split():
-                           word2freq[w] += 1
-
-                        #left trigram
-                        if i-2 >= 0:
-                            ltri = " ".join([padded_line[i-2], prev_word, word])
-                            word2freq[ltri] += 1
-                            for w in ltri.split():
-                                word2freq[w] += 1
-
-                        continue
-
-
-                    else:
-                        # left bigram
-                        lbi = " ".join([prev_word, word])
-                        word2freq[lbi] += 1
-                        for w in lbi.split():
-                            word2freq[w] += 1
-
-                        # right bigram
-                        rbi = " ".join([word, next_word])
-                        word2freq[rbi] += 1
-                        for w in rbi.split():
-                            word2freq[w] += 1
-
-                        # left trigram
-                        if i - 2 >= 0:
-                            ltri = " ".join([padded_line[i - 2], prev_word, word])
-                            word2freq[ltri] += 1
-                            for w in ltri.split():
-                                word2freq[w] += 1
-
-                        # right trigram
-                        if i + 2 < line_len:
-                            rti = " ".join([word, next_word, padded_line[i + 2]])
-                            word2freq[rti] += 1
-                            for w in rti.split():
-                                word2freq[w] += 1
-
-                        # middle trigram
-                        mtri = " ".join([prev_word, word, next_word])
-                        word2freq[mtri] += 1
-                        for w in mtri.split():
-                            word2freq[w] += 1
-                        continue
+                    # Middle trigram only when not at boundaries (to preserve original behavior)
+                    if prev_word != sentence_start_symbol and next_word != sentence_end_symbol:
+                        add_ngram_counts(word2freq, [prev_word, word, next_word])
 
     except FileNotFoundError:
         print(f"Error: Corpus file not found at {corpus_filename}")
         return word2freq
 
     return word2freq
+
+
+
+
 
 
 def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only):
@@ -306,7 +250,7 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
 
     word2freq = train(corpus_filename, candidates)
 
-    vocab_size = len({k for k in word2freq.keys() if len(k.split()) == 1})
+    vocab_size = len({k for k in word2freq if ' ' not in k})
     for context in contexts:
         prediction = predict(word2freq, vocab_size, candidate_list, context, 0.02)
         predictions.append(prediction)
