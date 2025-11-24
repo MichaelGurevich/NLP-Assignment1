@@ -53,65 +53,135 @@ def predict(word2freq: defaultdict, vocab_size ,candidates: list, context: dict,
 
     left_context_size = len(context["left_context"])
     right_context_size = len(context["right_context"])
-
-    if left_only:
-        if left_context_size == 2:
-            # todo: calc left tri gram chain
-            pass
-        else:
-            # TODO: calc left bi gram chain
-            pass
-    elif right_context_size == 2 and left_context_size == 2:
-        # TODO: calc left & right & mid tri grams
-        pass
-    elif left_context_size == 1:
-        # TODO: calc left bi gram chain, right & mid tri gram chain
-        pass
-    else:
-        # TODO: calc left & mid tri gram chain, right bi gram chain
-        pass
-
-    w_b2, w_b1, w_a1, w_a2 = context
-
-
-    # todo: implement left_only
-
     for candidate in candidates:
-        # left context
-        p_unigram_left = np.log(word2freq[w_b2] + k) - np.log(total_tokens + k * vocab_size)
-        left_bigram = " ".join([w_b2, w_b1])
-        p_w_b1_give_w_b2 = np.log(word2freq[left_bigram] + k) - np.log(word2freq[w_b2] + k * vocab_size)
-        left_trigram = " ".join([left_bigram, candidate]) 
-        p_w_b2__w_b1__candidate_given_wb_2__wb_1 = np.log(word2freq[left_trigram] + k) - np.log(
-                    word2freq[left_bigram] + k * vocab_size)
+        combined_prob = 0
+        if left_only:
+            if left_context_size == 2: # todo: calc left tri gram chain
+                left_context_word_1 = context["left_context"][0]
+                left_context_word_2 = context["left_context"][1]
+                left_context_word_3 = candidate
 
-        p_left_prob = np.sum(
-            np.array([p_unigram_left, p_w_b1_give_w_b2, p_w_b2__w_b1__candidate_given_wb_2__wb_1]))
+                left_unigram_prob = calc_unigram_prob(word2freq, left_context_word_1, total_tokens, vocab_size, k)
+                left_bi_gram_prob = calc_bi_gram_prob(word2freq, left_context_word_1, left_context_word_2, vocab_size, k)
+                left_tri_gram_prob = calc_tri_gram_prob(word2freq, left_context_word_1, left_context_word_2, left_context_word_3, vocab_size, k)
 
-        # middel context
-        mid_p_unigram_left = np.log(word2freq[w_b1] + k) - np.log(total_tokens + k * vocab_size)
-        mid_bigram = " ".join([w_b1, candidate])
-        p_candidate_given_w_b1 = np.log(word2freq[mid_bigram] + k) - np.log(word2freq[w_b1] + k * vocab_size)
-        mid_trigram = " ".join([mid_bigram, w_a1])
-        p_wb_1__candidate__w_a1_given_candidate_wb_1 = np.log(word2freq[mid_trigram] + k) - np.log(
-                    word2freq[mid_bigram] + k * vocab_size)
+                combined_prob = np.sum(np.log(np.array([left_unigram_prob, left_bi_gram_prob, left_tri_gram_prob])))
+            else: # TODO: calc left bi gram chain
+                left_context_word_1 = context["left_context"][0]
+                left_context_word_2 = candidate
+                left_unigram_prob = calc_unigram_prob(word2freq, left_context_word_1, total_tokens, vocab_size, k)
+                left_bi_gram_prob = calc_bi_gram_prob(word2freq, left_context_word_1, left_context_word_2, vocab_size, k)
 
-        p_mid_prob = np.sum(
-            np.array([mid_p_unigram_left, p_candidate_given_w_b1, p_wb_1__candidate__w_a1_given_candidate_wb_1]))
+                combined_prob = np.sum(np.log(np.array([left_unigram_prob, left_bi_gram_prob])))
+        elif right_context_size == 2 and left_context_size == 2: # TODO: calc left & right & mid tri grams
+            # left context tri gram
+            left_context_word_1 = context["left_context"][0]
+            left_context_word_2 = context["left_context"][1]
+            left_context_word_3 = candidate
 
-        # right context
+            left_unigram_prob = calc_unigram_prob(word2freq, left_context_word_1, total_tokens, vocab_size, k)
+            left_bi_gram_prob = calc_bi_gram_prob(word2freq, left_context_word_1, left_context_word_2, vocab_size, k)
+            left_tri_gram_prob = calc_tri_gram_prob(word2freq, left_context_word_1, left_context_word_2, left_context_word_3, vocab_size, k)
 
-        p_right_unigram = np.log(word2freq[candidate] + k) - np.log(total_tokens + k * vocab_size)
-        right_bigram = " ".join([candidate, w_a1])
-        p_w_a1_given_candidate = np.log(word2freq[w_a1] + k) - np.log(word2freq[candidate] + k * vocab_size)
-        right_trigram = " ".join([right_bigram, w_a2])
-        p__candidate__w_a1__w_a2_given_candidate_w_a1 = np.log(word2freq[right_trigram] + k) - np.log(
-                    word2freq[right_bigram] + k * vocab_size)
+            left_context_chain_prob = np.sum(np.log(np.array([left_unigram_prob, left_bi_gram_prob, left_tri_gram_prob])))
 
-        p_right_prob = np.sum(
-            np.array([p_right_unigram, p_w_a1_given_candidate, p__candidate__w_a1__w_a2_given_candidate_w_a1]))
+            # mid context tri gram
+            mid_context_word_1 = context["left_context"][1]
+            mid_context_word_2 = candidate
+            mid_context_word_3 = context["right_context"][0]
 
-        combined_prob = np.sum([p_left_prob, p_mid_prob, p_right_prob])
+            mid_uni_gram_prob = calc_unigram_prob(word2freq, mid_context_word_1, total_tokens, vocab_size, k)
+            mid_bi_gram_prob = calc_bi_gram_prob(word2freq, mid_context_word_1, mid_context_word_2, vocab_size, k)
+            mi_tri_gram_prob = calc_tri_gram_prob(word2freq, mid_context_word_1, mid_context_word_2, mid_context_word_3, vocab_size, k)
+
+            mid_context_chain_prob = np.sum(np.log(np.array([mid_uni_gram_prob, mid_bi_gram_prob, mi_tri_gram_prob])))
+
+            # right context tri gram
+            right_context_word_1 = candidate
+            right_context_word_2 = context["right_context"][0]
+            right_context_word_3 = context["right_context"][1]
+
+            right_uni_gram_prob = calc_unigram_prob(word2freq, right_context_word_1, total_tokens, vocab_size, k)
+            right_bi_gram_prob = calc_bi_gram_prob(word2freq, right_context_word_1, right_context_word_2, candidate, vocab_size, k)
+            right_tri_gram_prob = calc_tri_gram_prob(word2freq, right_context_word_1, right_context_word_2, right_context_word_3, vocab_size, k)
+
+            right_context_chain_prob = np.sum(np.log(np.array([right_uni_gram_prob, right_bi_gram_prob, right_tri_gram_prob])))
+
+            combined_prob = np.sum(np.array([left_context_chain_prob, mid_context_chain_prob, right_context_chain_prob]))
+
+        elif left_context_size == 1: # TODO: calc left bi gram chain, right & mid tri gram chain
+            # left context bi gram prob
+            left_context_word_1 = context["left_context"][0]
+            left_context_word_2 = candidate
+
+            left_unigram_prob = calc_unigram_prob(word2freq, left_context_word_1, total_tokens, vocab_size, k)
+            left_bi_gram_prob = calc_bi_gram_prob(word2freq, left_context_word_1, left_context_word_2, vocab_size, k)
+
+            left_context_chain_prob = np.sum(np.log(np.array([left_unigram_prob, left_bi_gram_prob])))
+
+            # mid context trigram
+            mid_context_word_1 = context["left_context"][1]
+            mid_context_word_2 = candidate
+            mid_context_word_3 = context["right_context"][0]
+
+            mid_uni_gram_prob = calc_unigram_prob(word2freq, mid_context_word_1, total_tokens, vocab_size, k)
+            mid_bi_gram_prob = calc_bi_gram_prob(word2freq, mid_context_word_1, mid_context_word_2, vocab_size, k)
+            mi_tri_gram_prob = calc_tri_gram_prob(word2freq, mid_context_word_1, mid_context_word_2, mid_context_word_3, vocab_size, k)
+
+            mid_context_chain_prob = np.sum(np.log(np.array([mid_uni_gram_prob, mid_bi_gram_prob, mi_tri_gram_prob])))
+
+            # right context trigram
+            right_context_word_1 = candidate
+            right_context_word_2 = context["right_context"][0]
+            right_context_word_3 = context["right_context"][1]
+
+            right_uni_gram_prob = calc_unigram_prob(word2freq, right_context_word_1, total_tokens, vocab_size, k)
+            right_bi_gram_prob = calc_bi_gram_prob(word2freq, right_context_word_1, right_context_word_2,candidate, vocab_size, k)
+            right_tri_gram_prob = calc_tri_gram_prob(word2freq, right_context_word_1, right_context_word_2, right_context_word_3, vocab_size, k)
+
+            right_context_chain_prob = np.sum(np.log(np.array([right_uni_gram_prob, right_bi_gram_prob, right_tri_gram_prob])))
+
+            combined_prob = np.sum(np.array([left_context_chain_prob, mid_context_chain_prob, right_context_chain_prob]))
+
+            pass
+        else: # TODO: calc left & mid tri gram chain, right bi gram chain
+            # left context tri gram
+            left_context_word_1 = context["left_context"][0]
+            left_context_word_2 = context["left_context"][1]
+            left_context_word_3 = candidate
+
+            left_unigram_prob = calc_unigram_prob(word2freq, left_context_word_1, total_tokens, vocab_size, k)
+            left_bi_gram_prob = calc_bi_gram_prob(word2freq, left_context_word_1, left_context_word_2, vocab_size, k)
+            left_tri_gram_prob = calc_tri_gram_prob(word2freq, left_context_word_1, left_context_word_2,
+                                                    left_context_word_3, vocab_size, k)
+
+            left_context_chain_prob = np.sum(
+                np.log(np.array([left_unigram_prob, left_bi_gram_prob, left_tri_gram_prob])))
+
+            # mid context trigram
+            mid_context_word_1 = context["left_context"][1]
+            mid_context_word_2 = candidate
+            mid_context_word_3 = context["right_context"][0]
+
+            mid_uni_gram_prob = calc_unigram_prob(word2freq, mid_context_word_1, total_tokens, vocab_size, k)
+            mid_bi_gram_prob = calc_bi_gram_prob(word2freq, mid_context_word_1, mid_context_word_2, vocab_size, k)
+            mi_tri_gram_prob = calc_tri_gram_prob(word2freq, mid_context_word_1, mid_context_word_2, mid_context_word_3,
+                                                  vocab_size, k)
+
+            mid_context_chain_prob = np.sum(np.log(np.array([mid_uni_gram_prob, mid_bi_gram_prob, mi_tri_gram_prob])))
+
+            # right context bi gram
+            right_context_word_1 = candidate
+            right_context_word_2 = context["right_context"][0]
+
+            right_uni_gram_prob = calc_unigram_prob(word2freq, right_context_word_1, total_tokens, vocab_size, k)
+            right_bi_gram_prob = calc_bi_gram_prob(word2freq, right_context_word_1, right_context_word_2, candidate,
+                                                   vocab_size, k)
+
+            right_context_chain_prob = np.sum(np.log(np.array([right_uni_gram_prob, right_bi_gram_prob,])))
+
+            combined_prob = np.sum(np.array([left_context_chain_prob, mid_context_chain_prob, right_context_chain_prob]))
+
 
         if combined_prob > max_prob:
             max_prob = combined_prob
