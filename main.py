@@ -33,7 +33,7 @@ def get_solution_accuracy(label: list, solution: list) -> float:
         return 0.0
 
     predicted_correct = np.sum(label_array == solution_array)
-
+    
     return predicted_correct / list_len
 
 
@@ -57,11 +57,11 @@ def get_random_solution_baseline(num_of_solutions: int, cloze_word_list: list) -
     for _ in range(num_of_solutions):
         # Generate a single random solution as a numpy array
         random_solution_array = np.random.permutation(cloze_word_array)
-
+        
         # Calculate accuracy for this random solution
         accuracy = get_solution_accuracy(label_array, random_solution_array)
         accuracy_list.append(accuracy)
-
+    
     return np.mean(accuracy_list)
 
 
@@ -78,7 +78,7 @@ def clean_line(text_line: str) -> str:
     text_line = text_line.lower()
 
     translator = str.maketrans('', '', string.punctuation)
-    cleaned_line = text_line.translate(translator)
+    cleaned_line= text_line.translate(translator)
 
     return cleaned_line
 
@@ -129,8 +129,7 @@ def predict(word2freq: defaultdict, vocab_size, candidates: list, context: list,
         # P(candidate | w_b2, w_b1) with Add-1 Smoothing
         left_trigram_hist = f"{w_b2} {w_b1}"
         left_trigram = f"{w_b2} {w_b1} {candidate}"
-        left_trigram_prob = (word2freq.get(left_trigram, 0) + k) / (
-                    word2freq.get(left_trigram_hist, 0) + k * vocab_size)
+        left_trigram_prob = (word2freq.get(left_trigram, 0) + k) / (word2freq.get(left_trigram_hist, 0) + k * vocab_size)
 
         """
         # P(w_a1 | candidate) with Add-1 Smoothing
@@ -142,16 +141,19 @@ def predict(word2freq: defaultdict, vocab_size, candidates: list, context: list,
         # P(w_a2 | candidate, w_a1) with Add-1 Smoothing
         right_trigram_hist = f"{candidate} {w_a1}"
         right_trigram = f"{candidate} {w_a1} {w_a2}"
-        right_trigram_prob = (word2freq.get(right_trigram, 0) + k) / (
-                    word2freq.get(right_trigram_hist, 0) + k * vocab_size)
+        right_trigram_prob = (word2freq.get(right_trigram, 0) + k) / (word2freq.get(right_trigram_hist, 0) + k * vocab_size)
+
 
         # P(w_a1 | w_b1, candidate) with Add-1 Smoothing
         mid_trigram_hist = f"{w_b1} {candidate}"
         mid_trigram = f"{w_b1} {candidate} {w_a1}"
         mid_trigram_prob = (word2freq.get(mid_trigram, 0) + k) / (word2freq.get(mid_trigram_hist, 0) + k * vocab_size)
 
+
+
         # The original code took the max of the probabilities. We preserve this approach.
-        # prob_arr = np.array([left_bigram_prob, left_trigram_prob, right_bigram_prob, right_trigram_prob, mid_trigram_prob])
+        #prob_arr = np.array([left_bigram_prob, left_trigram_prob, right_bigram_prob, right_trigram_prob, mid_trigram_prob])
+
 
         prob_arr = np.array([left_trigram_prob, right_trigram_prob, mid_trigram_prob])
         curr_max_prob = np.max(prob_arr)
@@ -220,10 +222,8 @@ def train(corpus_filename: str, candidates: set) -> dict:
 
 
 
-
-
-
 def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only):
+
     predictions = []
 
     try:
@@ -248,12 +248,13 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
 
     contexts = cloze_utils.get_all_contexts(text, n=2, left = left_only)
 
-    word2freq = train(corpus_filename, candidates)
+    word2freq = train(corpus_filename,candidates)
 
     vocab_size = len({k for k in word2freq if ' ' not in k})
     for context in contexts:
         prediction = predict(word2freq, vocab_size, candidate_list, context, 0.02)
         predictions.append(prediction)
+
 
     return predictions
 
