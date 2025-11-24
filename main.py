@@ -165,17 +165,19 @@ def predict(word2freq: defaultdict, vocab_size, candidates: list, context: list,
     return best_candidate
 
 
-def add_ngram_counts(word2freq: defaultdict, tokens: list) -> None:
+def add_ngram_counts(word2freq: defaultdict, tokens: list):
     """Helper to update counts for an n-gram and its unigrams."""
     key = " ".join(tokens)
     word2freq[key] += 1
+
     for w in tokens:
         word2freq[w] += 1
 
 
-def train(corpus_filename: str, candidates: set) -> dict:
+def train(corpus_filename: str, candidates: set):
 
     word2freq = defaultdict(int)
+    total_uni_grams_cnt = 0
 
     try:
         with open(corpus_filename, 'r', encoding='utf-8') as fin:
@@ -198,24 +200,29 @@ def train(corpus_filename: str, candidates: set) -> dict:
                     # Always add left/right bigrams around the candidate
                     add_ngram_counts(word2freq, [prev_word, word])
                     add_ngram_counts(word2freq, [word, next_word])
+                    total_uni_grams_cnt += 4
 
                     # Left trigram if available
                     if i - 2 >= 0:
                         add_ngram_counts(word2freq, [padded_line[i - 2], prev_word, word])
+                        total_uni_grams_cnt += 3
+
 
                     # Right trigram if available
                     if i + 2 < line_len:
                         add_ngram_counts(word2freq, [word, next_word, padded_line[i + 2]])
+                        total_uni_grams_cnt += 3
 
                     # Middle trigram only when not at boundaries 
                     if prev_word != cloze_utils.SENTENCE_START_SYMBOL and next_word != cloze_utils.SENTENCE_END_SYMBOL:
                         add_ngram_counts(word2freq, [prev_word, word, next_word])
+                        total_uni_grams_cnt += 3
 
     except FileNotFoundError:
         print(f"Error: Corpus file not found at {corpus_filename}")
         return word2freq
 
-    return word2freq
+    return word2freq, total_uni_grams_cnt
 
 
 
@@ -245,7 +252,8 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
 
     contexts = cloze_utils.get_all_contexts(text, n=2, left = left_only)
 
-    word2freq = train(corpus_filename,candidates)
+    word2freq, total_uni_grams_cnt = train(corpus_filename,candidates)
+    print(f'total tokens count: {total_uni_grams_cnt}')
 
     vocab_size = len({k for k in word2freq if ' ' not in k})
     for context in contexts:
