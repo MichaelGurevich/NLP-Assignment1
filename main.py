@@ -175,9 +175,6 @@ def add_ngram_counts(word2freq: defaultdict, tokens: list) -> None:
 
 def train(corpus_filename: str, candidates: set) -> dict:
 
-    sentence_start_symbol = "<s>"
-    sentence_end_symbol = "</s>"
-
     word2freq = defaultdict(int)
 
     try:
@@ -186,7 +183,7 @@ def train(corpus_filename: str, candidates: set) -> dict:
                 cleaned_line = clean_line(line).split()
 
                 # Add padding
-                padded_line = [sentence_start_symbol] + cleaned_line + [sentence_end_symbol]
+                padded_line = [cloze_utils.SENTENCE_START_SYMBOL] + cleaned_line + [cloze_utils.SENTENCE_END_SYMBOL]
                 line_len = len(padded_line)
 
                 # iterate tokens excluding the padding ends
@@ -210,8 +207,8 @@ def train(corpus_filename: str, candidates: set) -> dict:
                     if i + 2 < line_len:
                         add_ngram_counts(word2freq, [word, next_word, padded_line[i + 2]])
 
-                    # Middle trigram only when not at boundaries (to preserve original behavior)
-                    if prev_word != sentence_start_symbol and next_word != sentence_end_symbol:
+                    # Middle trigram only when not at boundaries 
+                    if prev_word != cloze_utils.SENTENCE_START_SYMBOL and next_word != cloze_utils.SENTENCE_END_SYMBOL:
                         add_ngram_counts(word2freq, [prev_word, word, next_word])
 
     except FileNotFoundError:
