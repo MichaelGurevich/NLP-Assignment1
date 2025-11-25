@@ -31,7 +31,7 @@ def plot_zipf_law(word2nfreq):
     x = list(range(1, len(y)+1))
 
     product = [a * b for a, b in zip(x, y)]
-    print(product[:1000])  # todo: print and note the roughly constant value
+    print(product[:1000])  #print and note the roughly constant value
 
     y = [log(e, 2) for e in y]
     x = [log(e, 2) for e in x]

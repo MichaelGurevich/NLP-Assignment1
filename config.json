@@ -1,6 +1,8 @@
 {
-  "input_filename":  "data/document.cloze.txt",
-  "candidates_filename": "data/candidate.words.txt",
+  "input_filename":  "data/document.test.cloze.txt",
+  "candidates_filename": "data/candidate.test.words.txt",
   "corpus_filename": "data/en.wikipedia2018.10M.txt",
-  "left_only": false
+  "left_only": false,
+  "n": 2,
+  "k": 0.02
 }
