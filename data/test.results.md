@@ -1,0 +1,22 @@
+
+
+\["fence", "garden"],  \["fresh", "outside"],   \["road", "sidewalk"],  \["experimental", "lab"],  \["bread", "table"],\["rocky", "ridge"], \["file", "flash"],\["homework", "class"],\["bell", "door"], \["color", "pigment"]
+
+
+
+
+
+
+
+
+
+\#1: \['door', '**garden**', '**fresh**', '**outside**', '*garden*', '*road*', '**experimental**', '*class*', 'road', '*door*', 'road', 'road', 'road', 'door', '*file*', '*door*', 'fence', '**door**', 'road', '*color*']
+
+
+
+\#2: \['bread', '**garden**', '**fresh**', '**outside**', '*garden*', 'class', '**experimental**', '*class*', 'door', '*door*', '*ridge*', '**ridge**', 'garden', 'door', '*file*', '*door*', 'garden', '**door**', 'class', '*color*']
+
+
+
+
+
