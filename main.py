@@ -7,13 +7,14 @@ from collections import defaultdict
 from typing import DefaultDict
 
 import cloze_utils
+from debugging import create_word2freq_file, read_word2freq_file
 
 
 def calc_unigram_prob(word2freq, w1, tokens_count, vocab_size, k):
     """Calculate log probability of a unigram with k-smoothing."""
     numerator = word2freq[w1] + k
     denominator = tokens_count + k * vocab_size
-    return np.log(numerator) - np.log(denominator)
+    return np.log(numerator / denominator)
 
 
 def calc_bi_gram_prob(word2freq, w1, w2, vocab_size, k):
@@ -21,7 +22,7 @@ def calc_bi_gram_prob(word2freq, w1, w2, vocab_size, k):
     bi_gram = " ".join([w1, w2])
     numerator = word2freq[bi_gram] + k
     denominator = word2freq[w1] + k * vocab_size
-    return np.log(numerator) - np.log(denominator)
+    return np.log(numerator / denominator)
 
 
 def calc_tri_gram_prob(word2freq, w1, w2, w3, vocab_size, k):
@@ -30,7 +31,7 @@ def calc_tri_gram_prob(word2freq, w1, w2, w3, vocab_size, k):
     bi_gram = " ".join([w1, w2])
     numerator = word2freq[tri_gram] + k
     denominator = word2freq[bi_gram] + k * vocab_size
-    return np.log(numerator) - np.log(denominator)
+    return np.log(numerator / denominator)
 
 
 def calc_chain_prob(word2freq, words: list, vocab_size, total_tokens, k):
@@ -101,13 +102,30 @@ def predict(word2freq: defaultdict, vocab_size, candidates: list, context: dict,
                 probs_list.append(ctx_prob)
 
         # Sum log probabilities
-        combined_prob = sum(probs_list)
+        combined_prob = np.sum(np.array(probs_list))
 
         if combined_prob > max_prob:
             max_prob = combined_prob
             best_candidate = candidate
 
     return best_candidate
+
+def clean_line(text_line: str) -> str:
+    """Cleans an input text input line from punctuation.
+
+    Args:
+        text_line (str): The input text line.
+
+    Returns:
+        str: text line w/o punctuation.
+
+    """
+    text_line = text_line.lower()
+
+    translator = str.maketrans('', '', string.punctuation)
+    cleaned_line= text_line.translate(translator)
+
+    return cleaned_line
 
 
 def train(corpus_filename: str, candidates: set):
@@ -122,8 +140,7 @@ def train(corpus_filename: str, candidates: set):
             defaultdict mapping n-grams (space-separated strings) to their frequencies
         """
     word2freq = defaultdict(int)
-    candidates_set = set(candidates_list)
-
+    unigram_count = 0
     with open(corpus_filename, 'r', encoding='utf-8') as fin:
         for line in fin:
             cleaned_line = clean_line(line).split()
@@ -142,6 +159,7 @@ def train(corpus_filename: str, candidates: set):
                 word2freq[prev_word] += 1
                 word2freq[word] += 1
                 word2freq[next_word] += 1
+                unigram_count += 3
 
                 # Count bigrams
                 word2freq[f"{prev_word} {word}"] += 1
@@ -163,7 +181,7 @@ def train(corpus_filename: str, candidates: set):
                 if prev_word != cloze_utils.SENTENCE_START_SYMBOL and next_word != cloze_utils.SENTENCE_END_SYMBOL:
                     word2freq[f"{prev_word} {word} {next_word}"] += 1
 
-    return word2freq
+    return word2freq, unigram_count
 
 
 
@@ -191,17 +209,42 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
 
     print(f'starting to solve the cloze {input_filename} with {candidates} using {corpus_filename}')
 
-    contexts = cloze_utils.get_all_contexts(text, n=2, left = left_only)
 
-    word2freq = train(corpus_filename,candidates)
+    word2freq, unigram_count = train(corpus_filename,candidates)
+    #create_word2freq_file(word2freq, 'word2freq.pkl')
 
+    # To load a pre-trained word2freq dictionary for faster debugging:
+    #word2freq = read_word2freq_file('word2freq.pkl')
+    # print("Loaded word2freq from word2freq.pkl")
+
+    vocab_size = len({k for k in word2freq if ' ' not in k})
+
+    #vocab_size = 138502
+    #unigram_count = 2554389
+
+    contexts_list = get_contexts(input_filename)
+
+
+
+    #print("contexts_list len ", len(contexts_list))
+    predictions = []
+    for ctx in contexts_list:
+        print(ctx)
+        prediction = predict(word2freq, vocab_size, candidate_list, ctx, 0.01, unigram_count)
+        predictions.append(prediction)
+        candidate_list.remove(prediction)
+
+
+    for pred in predictions:
+        print(pred)
+    """
     vocab_size = len({k for k in word2freq if ' ' not in k})
     for context in contexts:
         prediction = predict(word2freq, vocab_size, candidate_list, context, 0.02)
         predictions.append(prediction)
 
-
-    return predictions
+    """
+    return []
 
 
 if __name__ == '__main__':
