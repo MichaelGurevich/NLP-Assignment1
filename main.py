@@ -1,165 +1,110 @@
 import json
 import time
-import random
+from sympy.codegen.ast import continue_
+from cloze_utils import *
 import numpy as np
-import string
 from collections import defaultdict
 from typing import DefaultDict
 
 import cloze_utils
 
-from distributed.utils_comm import retry
+
+def calc_unigram_prob(word2freq, w1, tokens_count, vocab_size, k):
+    """Calculate log probability of a unigram with k-smoothing."""
+    numerator = word2freq[w1] + k
+    denominator = tokens_count + k * vocab_size
+    return np.log(numerator) - np.log(denominator)
 
 
-def get_solution_accuracy(label: list, solution: list) -> float:
-    """Calculates the accuracy of a given solution against a label.
+def calc_bi_gram_prob(word2freq, w1, w2, vocab_size, k):
+    """Calculate log probability of a bigram with k-smoothing."""
+    bi_gram = " ".join([w1, w2])
+    numerator = word2freq[bi_gram] + k
+    denominator = word2freq[w1] + k * vocab_size
+    return np.log(numerator) - np.log(denominator)
+
+
+def calc_tri_gram_prob(word2freq, w1, w2, w3, vocab_size, k):
+    """Calculate log probability of a trigram with k-smoothing."""
+    tri_gram = " ".join([w1, w2, w3])
+    bi_gram = " ".join([w1, w2])
+    numerator = word2freq[tri_gram] + k
+    denominator = word2freq[bi_gram] + k * vocab_size
+    return np.log(numerator) - np.log(denominator)
+
+
+def calc_chain_prob(word2freq, words: list, vocab_size, total_tokens, k):
+    """
+    Calculate total log probability of a word sequence (2 or 3 words).
+    Combines unigram, bigram, and optionally trigram probabilities.
+    """
+    uni_gram_prob = calc_unigram_prob(word2freq, words[0], total_tokens, vocab_size, k)
+    bi_gram_prob = calc_bi_gram_prob(word2freq, words[0], words[1], vocab_size, k)
+
+    if len(words) == 3:
+        tri_gram_prob = calc_tri_gram_prob(word2freq, words[0], words[1], words[2], vocab_size, k)
+        prob_arr = np.array([uni_gram_prob, bi_gram_prob, tri_gram_prob])
+    else:
+        prob_arr = np.array([uni_gram_prob, bi_gram_prob])
+
+    return sum(prob_arr)
+
+
+def get_right_context(context: list, context_size: int, candidate):
+    """Build right context sequence: [candidate, word_after_1, word_after_2?]"""
+    return [candidate, context[0], context[1]] if context_size == 2 else [candidate, context[0]]
+
+
+def get_left_context(context: list, context_size: int, candidate):
+    """Build left context sequence: [word_before_2?, word_before_1, candidate]"""
+    return [context[0], context[1], candidate] if context_size == 2 else [context[0], candidate]
+
+
+def predict(word2freq: defaultdict, vocab_size, candidates: list, context: dict,
+            k: float, total_tokens, left_only=False) -> str:
+    """
+    Predict the missing word in a cloze task using an n-gram model with k-smoothing.
 
     Args:
-        label (list): The ground truth labels.
-        solution (list): The predicted solution.
+        word2freq: Dictionary mapping n-grams to their frequencies.
+        vocab_size: Size of the vocabulary.
+        candidates: List of candidate words to choose from.
+        context: Dictionary with 'left_context' and 'right_context' lists.
+        k: Smoothing parameter.
+        total_tokens: Total number of tokens in the corpus.
+        left_only: If True, only use left context for prediction.
 
     Returns:
-        float: The accuracy of the solution, a float between 0.0 and 1.0.
+        The most likely candidate word to fill the blank.
     """
-    label_array = np.array(label)
-    solution_array = np.array(solution)
+    max_prob = -np.inf
+    best_candidate = None
 
-    list_len = len(label_array)
-
-    if list_len == 0:
-        return 1.0
-
-    if list_len != len(solution_array):
-        return 0.0
-
-    predicted_correct = np.sum(label_array == solution_array)
-    
-    return predicted_correct / list_len
-
-
-def get_random_solution_baseline(num_of_solutions: int, cloze_word_list: list) -> float:
-    """Calculates the average accuracy of multiple random cloze solutions as a baseline.
-
-    This function combines the generation of random solutions and the calculation
-    of their average accuracy.
-
-    Args:
-        num_of_solutions (int): The number of random solutions to generate.
-        cloze_word_list (list): The list of words representing the true solution (label).
-
-    Returns:
-        float: The average accuracy across all generated random solutions.
-    """
-    cloze_word_array = np.array(cloze_word_list)
-    label_array = cloze_word_array
-
-    accuracy_list = []
-    for _ in range(num_of_solutions):
-        # Generate a single random solution as a numpy array
-        random_solution_array = np.random.permutation(cloze_word_array)
-        
-        # Calculate accuracy for this random solution
-        accuracy = get_solution_accuracy(label_array, random_solution_array)
-        accuracy_list.append(accuracy)
-    
-    return np.mean(accuracy_list)
-
-
-def clean_line(text_line: str) -> str:
-    """Cleans an input text input line from punctuation.
-
-    Args:
-        text_line (str): The input text line.
-
-    Returns:
-        str: text line w/o punctuation.
-
-    """
-    text_line = text_line.lower()
-
-    translator = str.maketrans('', '', string.punctuation)
-    cleaned_line= text_line.translate(translator)
-
-    return cleaned_line
-
-
-def predict(word2freq: defaultdict, vocab_size, candidates: list, context: list, k: float) -> str:
-    """
-    Predicts the missing word in a cloze task using an n-gram model with Add-1 smoothing.
-
-    Args:
-        word2freq (defaultdict): A dictionary mapping n-grams to their frequencies.
-        candidates (list): A list of candidate words to choose from.
-        context (list): A list of four words representing the context around the blank,
-                        in the format [word_before_2, word_before_1, word_after_1, word_after_2].
-
-        k (float): k smoothing parameter.
-
-    Returns:
-        str: The most likely candidate word to fill the blank.
-    """
-    # V: Vocabulary size for Add-1 smoothing
-
-    if vocab_size == 0:
-        # Avoid division by zero if vocab is empty
-        return candidates[0] if candidates else ""
-
-    max_prob = -1.0
-    best_candidate = candidates[0] if candidates else ""
-
-    """
-    if len(context) != 4:
-        print("Warning: Context must be a list of 4 words. Using a dummy context.")
-        context = ["", "", "", ""]
-    """
-
-    w_b2, w_b1, w_a1, w_a2 = context
-
-    # todo: implement fall back if trigram not found try using bi-gram
-    # todo: implement left_only
+    left_context_size = len(context["left_context"])
+    right_context_size = len(context["right_context"])
 
     for candidate in candidates:
-        """
-        # P(candidate | w_b1) with Add-1 Smoothing
-        left_bigram_hist = w_b1
-        left_bigram = f"{w_b1} {candidate}"
-        left_bigram_prob = (word2freq.get(left_bigram, 0) + k) / (word2freq.get(left_bigram_hist, 0) + k * vocab_size)
-        """
+        probs_list = []
+        left_context = get_left_context(context["left_context"], left_context_size, candidate)
 
-        # P(candidate | w_b2, w_b1) with Add-1 Smoothing
-        left_trigram_hist = f"{w_b2} {w_b1}"
-        left_trigram = f"{w_b2} {w_b1} {candidate}"
-        left_trigram_prob = (word2freq.get(left_trigram, 0) + k) / (word2freq.get(left_trigram_hist, 0) + k * vocab_size)
+        if left_only:
+            # Use only left context for prediction
+            left_only_context_prob = calc_chain_prob(word2freq, left_context, vocab_size, total_tokens, k)
+            probs_list.append(left_only_context_prob)
+        else:
+            # Use left, middle, and right contexts
+            right_context = get_right_context(context["right_context"], right_context_size, candidate)
+            mid_context = [context["left_context"][-1], candidate, context["right_context"][0]]
 
-        """
-        # P(w_a1 | candidate) with Add-1 Smoothing
-        right_bigram_hist = candidate
-        right_bigram = f"{candidate} {w_a1}"
-        right_bigram_prob = (word2freq.get(right_bigram, 0) + k) / (word2freq.get(right_bigram_hist, 0) + k * vocab_size)
-        """
+            for ctx in [left_context, mid_context, right_context]:
+                ctx_prob = calc_chain_prob(word2freq, ctx, vocab_size, total_tokens, k)
+                probs_list.append(ctx_prob)
 
-        # P(w_a2 | candidate, w_a1) with Add-1 Smoothing
-        right_trigram_hist = f"{candidate} {w_a1}"
-        right_trigram = f"{candidate} {w_a1} {w_a2}"
-        right_trigram_prob = (word2freq.get(right_trigram, 0) + k) / (word2freq.get(right_trigram_hist, 0) + k * vocab_size)
+        # Sum log probabilities
+        combined_prob = sum(probs_list)
 
-
-        # P(w_a1 | w_b1, candidate) with Add-1 Smoothing
-        mid_trigram_hist = f"{w_b1} {candidate}"
-        mid_trigram = f"{w_b1} {candidate} {w_a1}"
-        mid_trigram_prob = (word2freq.get(mid_trigram, 0) + k) / (word2freq.get(mid_trigram_hist, 0) + k * vocab_size)
-
-
-
-        # The original code took the max of the probabilities. We preserve this approach.
-        #prob_arr = np.array([left_bigram_prob, left_trigram_prob, right_bigram_prob, right_trigram_prob, mid_trigram_prob])
-
-
-        prob_arr = np.array([left_trigram_prob, right_trigram_prob, mid_trigram_prob])
-        curr_max_prob = np.max(prob_arr)
-
-        if curr_max_prob > max_prob:
-            max_prob = curr_max_prob
+        if combined_prob > max_prob:
+            max_prob = combined_prob
             best_candidate = candidate
 
     return best_candidate
@@ -177,6 +122,7 @@ def train(corpus_filename: str, candidates: set):
             defaultdict mapping n-grams (space-separated strings) to their frequencies
         """
     word2freq = defaultdict(int)
+    candidates_set = set(candidates_list)
 
     with open(corpus_filename, 'r', encoding='utf-8') as fin:
         for line in fin:
