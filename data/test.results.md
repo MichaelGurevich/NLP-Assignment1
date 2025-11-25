@@ -9,11 +9,11 @@
 
 
 
-
+This is with all candidates\
 \#1: \['door', '**garden**', '**fresh**', '**outside**', '*garden*', '*road*', '**experimental**', '*class*', 'road', '*door*', 'road', 'road', 'road', 'door', '*file*', '*door*', 'fence', '**door**', 'road', '*color*']
 
 
-
+removed "road" because it was very common\
 \#2: \['bread', '**garden**', '**fresh**', '**outside**', '*garden*', 'class', '**experimental**', '*class*', 'door', '*door*', '*ridge*', '**ridge**', 'garden', 'door', '*file*', '*door*', 'garden', '**door**', 'class', '*color*']
 
 
