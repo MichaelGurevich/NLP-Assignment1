@@ -129,7 +129,7 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
 
     predictions = []
 
-
+    """
     for idx in range(1,14,1):
         print(f"Training model No. {idx}")
         candidates_filename = f"./testing_data/candidates/test{idx}.candidates.txt"
@@ -151,7 +151,7 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
     best_l_only_acc = -1
     best_no_res_acc = -1
 
-    for k in np.arange(0.0005, 1, 0.1):
+    for k in np.arange(0.1, 1, 0.1):
         left_only_correct_total = 0
         no_res_correct_total = 0
         total_predictions = 0
@@ -209,7 +209,7 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
     print(f"\nBest k for Left Only: {best_l_only_k} | Accuracy: {best_l_only_acc:.2f}%")
     print(f"Best k for No Restriction: {best_no_res_k} | Accuracy: {best_no_res_acc:.2f}%")
     print(f"Best k for Overall: {best_total_res_k} | Accuracy: {best_total_acc:.2f}%")
-    """
+
 
     """
     try:
