@@ -35,7 +35,7 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
     solver.fit(corpus_filename, candidates)
 
     # Get contexts from the cloze file
-    contexts_list = get_contexts(input_filename)
+    contexts_list = get_contexts(text)
 
     # Make predictions
     predictions = []

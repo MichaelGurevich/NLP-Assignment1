@@ -40,12 +40,12 @@ def pad_line(cleaned_line: list) -> list:
     return [SENTENCE_START_SYMBOL, SENTENCE_START2_SYMBOL] + cleaned_line + [SENTENCE_END2_SYMBOL, SENTENCE_END_SYMBOL]
 
 
-def get_contexts(cloze_filename: str) -> list:
+def get_contexts(cloze_text: str) -> list:
     """
      Extract left and right context words (up to 2 on each side) surrounding cloze blanks.
 
      Args:
-         cloze_filename: Path to file with sentences containing cloze blanks
+         cloze_text: Content of file with sentences containing cloze blanks
 
      Returns:
          List of dicts with "left_context" and "right_context" for each blank
@@ -58,29 +58,28 @@ def get_contexts(cloze_filename: str) -> list:
 
     contexts_list = []
 
-    with open(cloze_filename, 'r', encoding='utf-8') as fin:
-        for line in fin:
-            cleaned_line = line.translate(translator).split()
-            # add start and end sentence symbols
-            padded_line = pad_line(cleaned_line)
+    for line in cloze_text.splitlines():
+        cleaned_line = line.translate(translator).split()
+        # add start and end sentence symbols
+        padded_line = pad_line(cleaned_line)
 
-            for i in range(2, len(padded_line) - 2):
-                if padded_line[i] != CLOZE_BLANK_SYMBOL:
-                    continue
+        for i in range(2, len(padded_line) - 2):
+            if padded_line[i] != CLOZE_BLANK_SYMBOL:
+                continue
 
-                context = {
-                    "left_context": [],
-                    "right_context": []
-                }
+            context = {
+                "left_context": [],
+                "right_context": []
+            }
 
-                prev_word = padded_line[i - 1]
-                prev_prev_word = padded_line[i - 2]
-                next_word = padded_line[i + 1]
-                next_next_word = padded_line[i + 2]
+            prev_word = padded_line[i - 1]
+            prev_prev_word = padded_line[i - 2]
+            next_word = padded_line[i + 1]
+            next_next_word = padded_line[i + 2]
 
-                context["left_context"] = [prev_prev_word, prev_word]
-                context["right_context"] = [next_word, next_next_word]
+            context["left_context"] = [prev_prev_word, prev_word]
+            context["right_context"] = [next_word, next_next_word]
 
-                contexts_list.append(context)
+            contexts_list.append(context)
 
     return contexts_list
