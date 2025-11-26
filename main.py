@@ -9,60 +9,16 @@ from typing import DefaultDict
 import cloze_utils
 from debugging import create_word2freq_file, read_word2freq_file
 
-
-def calc_unigram_prob(word2freq, w1, tokens_count, vocab_size, k):
-    """Calculate log probability of a unigram with k-smoothing."""
-    numerator = word2freq[w1] + k
-    denominator = tokens_count + k * vocab_size
-    return np.log(numerator / denominator)
-
-
-def calc_bi_gram_prob(word2freq, w1, w2, vocab_size, k):
-    """Calculate log probability of a bigram with k-smoothing."""
-    bi_gram = " ".join([w1, w2])
-    numerator = word2freq[bi_gram] + k
-    denominator = word2freq[w1] + k * vocab_size
-    return np.log(numerator / denominator)
-
-
-def calc_tri_gram_prob(word2freq, w1, w2, w3, vocab_size, k):
+def calc_tri_gram_prob(word2freq, ctx:list, vocab_size, k):
     """Calculate log probability of a trigram with k-smoothing."""
-    tri_gram = " ".join([w1, w2, w3])
-    bi_gram = " ".join([w1, w2])
+    tri_gram = " ".join(ctx)
+    bi_gram = " ".join([ctx[0], ctx[1]])
     numerator = word2freq[tri_gram] + k
     denominator = word2freq[bi_gram] + k * vocab_size
-    return np.log(numerator / denominator)
-
-
-def calc_chain_prob(word2freq, words: list, vocab_size, total_tokens, k):
-    """
-    Calculate total log probability of a word sequence (2 or 3 words).
-    Combines unigram, bigram, and optionally trigram probabilities.
-    """
-    uni_gram_prob = calc_unigram_prob(word2freq, words[0], total_tokens, vocab_size, k)
-    bi_gram_prob = calc_bi_gram_prob(word2freq, words[0], words[1], vocab_size, k)
-
-    if len(words) == 3:
-        tri_gram_prob = calc_tri_gram_prob(word2freq, words[0], words[1], words[2], vocab_size, k)
-        prob_arr = np.array([uni_gram_prob, bi_gram_prob, tri_gram_prob])
-    else:
-        prob_arr = np.array([uni_gram_prob, bi_gram_prob])
-
-    return sum(prob_arr)
-
-
-def get_right_context(context: list, context_size: int, candidate):
-    """Build right context sequence: [candidate, word_after_1, word_after_2?]"""
-    return [candidate, context[0], context[1]] if context_size == 2 else [candidate, context[0]]
-
-
-def get_left_context(context: list, context_size: int, candidate):
-    """Build left context sequence: [word_before_2?, word_before_1, candidate]"""
-    return [context[0], context[1], candidate] if context_size == 2 else [context[0], candidate]
-
+    return numerator / denominator
 
 def predict(word2freq: defaultdict, vocab_size, candidates: list, context: dict,
-            k: float, total_tokens, left_only=True) -> str:
+            k: float, left_only=True) -> str:
     """
     Predict the missing word in a cloze task using an n-gram model with k-smoothing.
 
@@ -81,40 +37,26 @@ def predict(word2freq: defaultdict, vocab_size, candidates: list, context: dict,
     max_prob = -np.inf
     best_candidate = None
 
-    left_context_size = len(context["left_context"])
-    right_context_size = len(context["right_context"])
-
     for candidate in candidates:
         probs_list = []
-        left_context = get_left_context(context["left_context"], left_context_size, candidate)
+        left_context = [context["left_context"][0], context["left_context"][1], candidate]
 
         if left_only:
-            # Use only left context for prediction
-            #left_only_context_prob = calc_chain_prob(word2freq, left_context, vocab_size, total_tokens, k)
-            tri_gram = " ".join([left_context[0], left_context[1], left_context[2]])
-            bi_gram = " ".join([left_context[0], left_context[1]])
-            numerator = word2freq[tri_gram] + k
-            denominator = word2freq[bi_gram] + k * vocab_size
-            ctx_prob = numerator / denominator
-            probs_list.append(ctx_prob)
+            left_tri_gram_prob = calc_tri_gram_prob(word2freq, left_context, vocab_size, k)
+            probs_list.append(left_tri_gram_prob)
         else:
             # Use left, middle, and right contexts
-            right_context = get_right_context(context["right_context"], right_context_size, candidate)
-            mid_context = [context["left_context"][-1], candidate, context["right_context"][0]]
+            right_context = [candidate, context["right_context"][0], context["right_context"][1]]
+            mid_context = [context["left_context"][1], candidate, context["right_context"][0]]
 
             for ctx in [left_context, mid_context, right_context]:
-                tri_gram = " ".join([ctx[0], ctx[1], ctx[2]])
-                bi_gram = " ".join([ctx[0], ctx[1]])
-                numerator = word2freq[tri_gram] + k
-                denominator = word2freq[bi_gram] + k * vocab_size
-                ctx_prob = numerator / denominator
-                #ctx_prob = calc_chain_prob(word2freq, ctx, vocab_size, total_tokens, k)
+                ctx_prob = calc_tri_gram_prob(word2freq, ctx, vocab_size, k)
                 probs_list.append(ctx_prob)
 
         # Sum log probabilities
-        combined_prob = np.sum(np.log(np.array(probs_list)))
+        combined_prob = np.mean(np.array(probs_list))
 
-        if combined_prob > max_prob:
+        if combined_prob > max_prob or best_candidate is None:
             max_prob = combined_prob
             best_candidate = candidate
 
@@ -150,48 +92,35 @@ def train(corpus_filename: str, candidates: set):
             defaultdict mapping n-grams (space-separated strings) to their frequencies
         """
     word2freq = defaultdict(int)
-    unigram_count = 0
     with open(corpus_filename, 'r', encoding='utf-8') as fin:
         for line in fin:
             cleaned_line = clean_line(line).split()
-            padded_line = [cloze_utils.SENTENCE_START_SYMBOL] + cleaned_line + [cloze_utils.SENTENCE_END_SYMBOL]
+            padding_before = f"{cloze_utils.SENTENCE_START_SYMBOL} {cloze_utils.SENTENCE_START2_SYMBOL}"
+            padding_after = f"{cloze_utils.SENTENCE_END2_SYMBOL} {cloze_utils.SENTENCE_END_SYMBOL}"
+            padded_line = [padding_before] + cleaned_line + [padding_after]
             line_len = len(padded_line)
 
-            for i in range(1, line_len - 1):
+            for i in range(2, line_len - 2):
                 word = padded_line[i]
                 if word not in candidates:
                     continue
 
+                # left tri gram
                 prev_word = padded_line[i - 1]
-                next_word = padded_line[i + 1]
-
-                # Count unigrams in the window
-                word2freq[prev_word] += 1
-                word2freq[word] += 1
-                word2freq[next_word] += 1
-                unigram_count += 3
-
-                # Count bigrams
+                prev_prev_word = padded_line[i - 2]
                 word2freq[f"{prev_word} {word}"] += 1
+                word2freq[f"{prev_prev_word} {prev_word} {word}"] += 1
+
+                # right tri gram
+                next_word = padded_line[i + 1]
+                next_next_word = padded_line[i + 2]
                 word2freq[f"{word} {next_word}"] += 1
+                word2freq[f"{word} {next_word} {next_next_word}"] += 1
 
-                # Left trigram if available
-                if i - 2 >= 0:
-                    prev_prev_word = padded_line[i - 2]
-                    word2freq[prev_prev_word] += 1
-                    word2freq[f"{prev_prev_word} {prev_word} {word}"] += 1
+                # mid trigram
+                word2freq[f"{prev_word} {word} {next_word}"] += 1
 
-                # Right trigram if available
-                if i + 2 < line_len:
-                    next_next_word = padded_line[i + 2]
-                    word2freq[next_next_word] += 1
-                    word2freq[f"{word} {next_word} {next_next_word}"] += 1
-
-                # Middle trigram
-                if prev_word != cloze_utils.SENTENCE_START_SYMBOL and next_word != cloze_utils.SENTENCE_END_SYMBOL:
-                    word2freq[f"{prev_word} {word} {next_word}"] += 1
-
-    return word2freq, unigram_count
+    return word2freq
 
 
 
@@ -220,20 +149,16 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
     print(f'starting to solve the cloze {input_filename} with {candidates} using {corpus_filename}')
 
 
-    #word2freq, unigram_count = train(corpus_filename,candidates)
+    #word2freq = train(corpus_filename,candidates)
     #create_word2freq_file(word2freq, 'word2freq.pkl')
 
     # To load a pre-trained word2freq dictionary for faster debugging:
     word2freq = read_word2freq_file('word2freq.pkl')
     # print("Loaded word2freq from word2freq.pkl")
 
-    vocab_size = len({k for k in word2freq if ' ' not in k})
-
-    #vocab_size = 138502
-    #unigram_count = 2554389
+    vocab_size = 50000
 
     contexts_list = get_contexts(input_filename)
-    unigram_count = sum(count for ngram, count in word2freq.items() if ' ' not in ngram)
 
     candidate_copy = []
 
@@ -242,7 +167,7 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
     #print("contexts_list len ", len(contexts_list))
     predictions = []
     for ctx in contexts_list:
-        prediction = predict(word2freq, vocab_size, candidate_list, ctx, 0.01, unigram_count)
+        prediction = predict(word2freq, vocab_size, candidate_list, ctx, 0.001)
         predictions.append(prediction)
         candidate_list.remove(prediction)
 
@@ -253,14 +178,8 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
 
 
     print(f"Accuarcy: {true/len(predictions)*100} | {true} / {len(predictions)}")
-    """
-    vocab_size = len({k for k in word2freq if ' ' not in k})
-    for context in contexts:
-        prediction = predict(word2freq, vocab_size, candidate_list, context, 0.02)
-        predictions.append(prediction)
 
-    """
-    return []
+    return predictions
 
 
 if __name__ == '__main__':

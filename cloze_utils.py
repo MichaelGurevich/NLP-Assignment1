@@ -8,6 +8,8 @@ from distributed.utils_comm import retry
 
 SENTENCE_START_SYMBOL = "<s>"
 SENTENCE_END_SYMBOL = "</s>"
+SENTENCE_START2_SYMBOL = "<s2>"
+SENTENCE_END2_SYMBOL = "</s2>"
 CLOZE_BLANK_SYMBOL = "__________"
 
 #function that finds the indices of the blanks in a string
@@ -93,9 +95,10 @@ def get_contexts(cloze_filename:str) -> list:
         for line in fin:
 
             cleaned_line = line.translate(translator).split()
-
             # add start and end sentence symbols
+            cleaned_line.insert(0, SENTENCE_START2_SYMBOL)
             cleaned_line.insert(0, SENTENCE_START_SYMBOL)
+            cleaned_line.append(SENTENCE_END2_SYMBOL)
             cleaned_line.append(SENTENCE_END_SYMBOL)
 
             for i in range (1, len(cleaned_line)-1, 1):
@@ -108,23 +111,12 @@ def get_contexts(cloze_filename:str) -> list:
                 }
 
                 prev_word = cleaned_line[i-1]
+                prev_prev_word = cleaned_line[i-2]
                 next_word = cleaned_line[i+1]
+                next_next_word = cleaned_line[i+2]
 
-                if prev_word == SENTENCE_START_SYMBOL: # candidate is the 1st word in the sentence
-                    context["left_context"].append(SENTENCE_START_SYMBOL)
-                    context["right_context"].append(next_word)
-                    context["right_context"].append(cleaned_line[i+2])
-                elif next_word == SENTENCE_END_SYMBOL:
-                    context["right_context"].append(SENTENCE_END_SYMBOL)
-                    context["left_context"].append(cleaned_line[i - 2])
-                    context["left_context"].append(prev_word)
-                else:
-                    context["right_context"].append(next_word)
-                    context["right_context"].append(cleaned_line[i+2])
-
-                    context["left_context"].append(cleaned_line[i - 2])
-                    context["left_context"].append(prev_word)
-
+                context["left_context"] = [prev_prev_word, prev_word]
+                context["right_context"] = [next_word, next_next_word]
 
                 contexts_list.append(context)
 
