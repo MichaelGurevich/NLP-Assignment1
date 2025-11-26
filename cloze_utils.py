@@ -1,123 +1,88 @@
+"""Utility functions and constants for the cloze-solving task.
+
+This module provides helper functions for text cleaning, sentence padding, and
+extracting contexts around blanks in a cloze puzzle. It also defines several
+constants used throughout the project.
+"""
 import string
-import re
-import string
-import numpy as np
-import random
-from dask.dataframe.methods import value_counts_aggregate
-from distributed.utils_comm import retry
 
 SENTENCE_START_SYMBOL = "<s>"
 SENTENCE_END_SYMBOL = "</s>"
 SENTENCE_START2_SYMBOL = "<s2>"
 SENTENCE_END2_SYMBOL = "</s2>"
 CLOZE_BLANK_SYMBOL = "__________"
-
-#function that finds the indices of the blanks in a string
-# returns a list of tuples (starting index, end index).
-def find_blanks(text):
-    blanks = []
-    in_Blank = False
-    start = None
-
-    for index, char in enumerate(text):
-        if char == '_':
-            if in_Blank == False:  #found start of new blank
-                start = index
-                in_Blank = True
-        else:
-            if in_Blank:  # found end of blank
-                blanks.append((start, index-1))
-                in_Blank = False
+VOCAB_SIZE = 50000
+K_SMOOTHING_VALUE = 0.0005
 
 
-    if in_Blank: #end of string is blank
-        blanks.append((start, len(text)-1))
+def clean_line(text_line: str) -> str:
+    """Cleans a line of text by lowercasing and removing punctuation.
 
-    return blanks
+    Args:
+        text_line (str): The raw input text line.
 
-# function that receives a tuple of blank indices in string,
-# n - number of words to retrieve on either side of blank,
-# left - flag for whether to return the words only to the left of blank or from both sides
-# returns a list of words [before1, before2, after1, after2] or [before1, before2] (if left = true) of the n words beside blank.
-
-def get_context(text, blank_indices, n=1, left = False):
-
-    start, end = blank_indices
-
-    #splitting the string into two parts
-    before = text [:start]
-    after = text [end+1:]
-
-    #splitting each part to a list of words
-    before_words = re.findall(r"\w+", before)
-    after_words = re.findall(r"\w+", after)
-
-
-    #checking if there are enough words on each side of a blank,
-    #but assigns what's there anyway
-    prev_n = before_words[-n:] if len(before_words) >= n else before_words
-    next_n = after_words[:n] if len(after_words) >= n else after_words
-
-
-    #NOTICE: this will return a list of strings even if there's less than we are expecting
-    if left:
-        return prev_n
-    else:
-        return prev_n + next_n
-
-
-def get_all_contexts(text, n=2, left=False):
-    blanks = find_blanks(text)
-    return [get_context(text, b, n=n, left=left) for b in blanks]
-
-
-
-def get_contexts(cloze_filename:str) -> list:
+    Returns:
+        str: The cleaned text line.
     """
-     Extract left and right context words (up to 2 on each side) surrounding cloze blanks.
+    text_line = text_line.lower()
+    translator = str.maketrans('', '', string.punctuation)
+    cleaned_line = text_line.translate(translator)
+    return cleaned_line
 
-     Args:
-         cloze_filename: Path to file with sentences containing cloze blanks
 
-     Returns:
-         List of dicts with "left_context" and "right_context" for each blank
+def pad_line(cleaned_line: list) -> list:
+    """Adds padding symbols to the start and end of a tokenized sentence.
 
-     Note: Assumes cloze blanks are not the only word in a sentence.
-     """
+    The padding consists of two symbols at the start and two at the end to ensure
+    that a trigram model has a valid two-word context for every word in the
+    original sentence.
 
+    Args:
+        cleaned_line (list[str]): A list of tokens representing a sentence.
+
+    Returns:
+        list[str]: The list of tokens with padding symbols added.
+    """
+    return [SENTENCE_START_SYMBOL, SENTENCE_START2_SYMBOL] + cleaned_line + [SENTENCE_END2_SYMBOL, SENTENCE_END_SYMBOL]
+
+
+def get_contexts(cloze_text: str) -> list[dict]:
+    """Extracts the contexts surrounding each blank in a cloze text.
+
+    This function processes a block of text containing one or more cloze blanks
+    (represented by CLOZE_BLANK_SYMBOL). For each blank, it extracts the two
+    words immediately to the left and the two words immediately to the right.
+
+    Args:
+        cloze_text (str): The full string of the cloze puzzle.
+
+    Returns:
+        list[dict]: A list of dictionaries, where each dictionary represents a
+                    blank. The dictionary has two keys: "left_context" and
+                    "right_context", each containing a list of two words.
+    """
+    # Create a translator that removes all punctuation except underscores,
+    # to protect the CLOZE_BLANK_SYMBOL.
     punctuation_without_underscore = string.punctuation.replace('_', '')
     translator = str.maketrans('', '', punctuation_without_underscore)
 
     contexts_list = []
 
+    for line in cloze_text.splitlines():
+        if not line.strip():
+            continue
 
-    with open(cloze_filename, 'r', encoding='utf-8') as fin:
-        for line in fin:
+        cleaned_line = line.translate(translator).split()
+        padded_line = pad_line(cleaned_line)
 
-            cleaned_line = line.translate(translator).split()
-            # add start and end sentence symbols
-            cleaned_line.insert(0, SENTENCE_START2_SYMBOL)
-            cleaned_line.insert(0, SENTENCE_START_SYMBOL)
-            cleaned_line.append(SENTENCE_END2_SYMBOL)
-            cleaned_line.append(SENTENCE_END_SYMBOL)
+        for i in range(2, len(padded_line) - 2):
+            if padded_line[i] != CLOZE_BLANK_SYMBOL:
+                continue
 
-            for i in range (1, len(cleaned_line)-1, 1):
-                if cleaned_line[i] != CLOZE_BLANK_SYMBOL:
-                    continue
-
-                context = {
-                    "left_context": [],
-                    "right_context": []
-                }
-
-                prev_word = cleaned_line[i-1]
-                prev_prev_word = cleaned_line[i-2]
-                next_word = cleaned_line[i+1]
-                next_next_word = cleaned_line[i+2]
-
-                context["left_context"] = [prev_prev_word, prev_word]
-                context["right_context"] = [next_word, next_next_word]
-
-                contexts_list.append(context)
+            context = {
+                "left_context": [padded_line[i - 2], padded_line[i - 1]],
+                "right_context": [padded_line[i + 1], padded_line[i + 2]]
+            }
+            contexts_list.append(context)
 
     return contexts_list

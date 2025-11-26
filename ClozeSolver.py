@@ -33,9 +33,6 @@ class ClozeSolver:
         self.k = k
         self.vocab_size = vocab_size
         self.word2freq = defaultdict(int)
-        # NOTE(intern): This attribute is initialized but never used.
-        # It's good practice to remove unused variables to keep the code clean.
-        self.total_tokens = 0
 
     @staticmethod
     def calc_tri_gram_prob(word2freq, ctx: list, vocab_size, k):
