@@ -62,7 +62,7 @@ def get_left_context(context: list, context_size: int, candidate):
 
 
 def predict(word2freq: defaultdict, vocab_size, candidates: list, context: dict,
-            k: float, total_tokens, left_only=False) -> str:
+            k: float, total_tokens, left_only=True) -> str:
     """
     Predict the missing word in a cloze task using an n-gram model with k-smoothing.
 
@@ -90,19 +90,29 @@ def predict(word2freq: defaultdict, vocab_size, candidates: list, context: dict,
 
         if left_only:
             # Use only left context for prediction
-            left_only_context_prob = calc_chain_prob(word2freq, left_context, vocab_size, total_tokens, k)
-            probs_list.append(left_only_context_prob)
+            #left_only_context_prob = calc_chain_prob(word2freq, left_context, vocab_size, total_tokens, k)
+            tri_gram = " ".join([left_context[0], left_context[1], left_context[2]])
+            bi_gram = " ".join([left_context[0], left_context[1]])
+            numerator = word2freq[tri_gram] + k
+            denominator = word2freq[bi_gram] + k * vocab_size
+            ctx_prob = numerator / denominator
+            probs_list.append(ctx_prob)
         else:
             # Use left, middle, and right contexts
             right_context = get_right_context(context["right_context"], right_context_size, candidate)
             mid_context = [context["left_context"][-1], candidate, context["right_context"][0]]
 
             for ctx in [left_context, mid_context, right_context]:
-                ctx_prob = calc_chain_prob(word2freq, ctx, vocab_size, total_tokens, k)
+                tri_gram = " ".join([ctx[0], ctx[1], ctx[2]])
+                bi_gram = " ".join([ctx[0], ctx[1]])
+                numerator = word2freq[tri_gram] + k
+                denominator = word2freq[bi_gram] + k * vocab_size
+                ctx_prob = numerator / denominator
+                #ctx_prob = calc_chain_prob(word2freq, ctx, vocab_size, total_tokens, k)
                 probs_list.append(ctx_prob)
 
         # Sum log probabilities
-        combined_prob = np.sum(np.array(probs_list))
+        combined_prob = np.sum(np.log(np.array(probs_list)))
 
         if combined_prob > max_prob:
             max_prob = combined_prob
@@ -210,11 +220,11 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
     print(f'starting to solve the cloze {input_filename} with {candidates} using {corpus_filename}')
 
 
-    word2freq, unigram_count = train(corpus_filename,candidates)
+    #word2freq, unigram_count = train(corpus_filename,candidates)
     #create_word2freq_file(word2freq, 'word2freq.pkl')
 
     # To load a pre-trained word2freq dictionary for faster debugging:
-    #word2freq = read_word2freq_file('word2freq.pkl')
+    word2freq = read_word2freq_file('word2freq.pkl')
     # print("Loaded word2freq from word2freq.pkl")
 
     vocab_size = len({k for k in word2freq if ' ' not in k})
@@ -223,20 +233,26 @@ def solve_cloze(input_filename, candidates_filename, corpus_filename, left_only)
     #unigram_count = 2554389
 
     contexts_list = get_contexts(input_filename)
+    unigram_count = sum(count for ngram, count in word2freq.items() if ' ' not in ngram)
 
+    candidate_copy = []
 
-
+    for l in candidate_list:
+        candidate_copy.append(l)
     #print("contexts_list len ", len(contexts_list))
     predictions = []
     for ctx in contexts_list:
-        print(ctx)
         prediction = predict(word2freq, vocab_size, candidate_list, ctx, 0.01, unigram_count)
         predictions.append(prediction)
         candidate_list.remove(prediction)
 
+    true = 0
+    for i in range(len(predictions)):
+        if predictions[i] == candidate_copy[i]:
+            true += 1
 
-    for pred in predictions:
-        print(pred)
+
+    print(f"Accuarcy: {true/len(predictions)*100} | {true} / {len(predictions)}")
     """
     vocab_size = len({k for k in word2freq if ' ' not in k})
     for context in contexts:
